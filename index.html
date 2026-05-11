@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flutter Wave Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Flutter Wave <span>Generator</span></h1>
+            <p>Design your custom CustomClipper path and get the Dart code instantly.</p>
+        </header>
+
+        <main>
+            <div class="editor-panel">
+                <div class="canvas-header">
+                    <span>Interactive Canvas (Represents Size)</span>
+                    <div class="controls">
+                        <button id="smooth-btn" title="Fix sharp corners">✨ Fix Smoothness</button>
+                        <button id="add-wave-btn">+ Add Wave</button>
+                        <button id="remove-wave-btn">- Remove</button>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <svg id="wave-canvas" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="wave-gradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.9"/>
+                                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.9"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- Main filled shape -->
+                        <path id="wave-path" fill="url(#wave-gradient)" />
+                        
+                        <!-- Helper lines for control points -->
+                        <path id="helper-lines" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-dasharray="6" fill="none" />
+                        
+                        <!-- Points will be injected here via JS -->
+                        <g id="points-container"></g>
+                    </svg>
+                </div>
+                <div class="canvas-footer">
+                    <div class="legend">
+                        <span class="legend-item"><span class="dot anchor-dot"></span> Anchor Point</span>
+                        <span class="legend-item"><span class="dot control-dot"></span> Control Point</span>
+                    </div>
+                    <p class="hint">Drag the points to shape the wave!</p>
+                </div>
+            </div>
+
+            <div class="code-panel">
+                <div class="code-header">
+                    <span>Generated Dart Code</span>
+                    <button id="copy-btn">Copy Code</button>
+                </div>
+                <pre><code id="code-output"></code></pre>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

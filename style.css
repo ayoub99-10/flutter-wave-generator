@@ -1,0 +1,258 @@
+:root {
+    --bg-color: #0f172a;
+    --panel-bg: #1e293b;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --accent: #a855f7;
+    --border: #334155;
+    --point-anchor: #ec4899;
+    --point-control: #38bdf8;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+header h1 span {
+    color: var(--primary);
+    background: linear-gradient(to right, var(--primary), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+header p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 1fr 450px;
+    gap: 2rem;
+    flex: 1;
+    align-items: stretch;
+}
+
+.editor-panel, .code-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+}
+
+.canvas-header, .code-header {
+    padding: 1.25rem 1.5rem;
+    background: rgba(15, 23, 42, 0.4);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+.controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.controls button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 0.5rem 0.8rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.controls button:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--text-muted);
+}
+
+.canvas-container {
+    flex: 1;
+    position: relative;
+    min-height: 400px;
+}
+
+#wave-canvas {
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        45deg,
+        #1e293b,
+        #1e293b 15px,
+        #1a2333 15px,
+        #1a2333 30px
+    );
+    cursor: crosshair;
+    display: block;
+    touch-action: none; /* Prevent scrolling while dragging on touch devices */
+}
+
+.point {
+    cursor: grab;
+    transition: r 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.point:hover {
+    r: 12;
+}
+
+.point:active {
+    cursor: grabbing;
+    r: 10;
+}
+
+.anchor-point {
+    fill: var(--point-anchor);
+    stroke: #fff;
+    stroke-width: 2.5;
+}
+
+.control-point {
+    fill: var(--point-control);
+    stroke: #fff;
+    stroke-width: 2.5;
+}
+
+.canvas-footer {
+    padding: 1rem 1.5rem;
+    background: rgba(15, 23, 42, 0.4);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.legend {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+
+.anchor-dot { background-color: var(--point-anchor); }
+.control-dot { background-color: var(--point-control); }
+
+.hint {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+#copy-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
+}
+
+#copy-btn:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px -1px rgba(99, 102, 241, 0.4);
+}
+
+#copy-btn:active {
+    transform: translateY(1px);
+}
+
+.code-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.code-panel pre {
+    padding: 1.5rem;
+    margin: 0;
+    overflow-x: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #e2e8f0;
+    flex: 1;
+    background: #0f172a;
+}
+
+/* Syntax Highlighting overrides for plain pre text to look like code */
+.code-panel pre {
+    color: #38bdf8; /* Default for text */
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    main {
+        grid-template-columns: 1fr;
+    }
+    
+    .canvas-container {
+        height: 400px;
+        flex: none;
+    }
+    
+    .code-panel {
+        min-height: 400px;
+    }
+}
