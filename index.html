@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flutter Wave Generator</title>
+    <title>Flutter Wave Generator — Design your CustomClipper visually</title>
+    <meta name="description" content="A visual tool for Flutter developers to design wave shapes and get the exact quadraticBezierTo Dart code instantly.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,50 +12,97 @@
     <div class="app-container">
         <header>
             <h1>Flutter Wave <span>Generator</span></h1>
-            <p>Design your custom CustomClipper path and get the Dart code instantly.</p>
+            <p>Design your wave visually, get the Dart code instantly.</p>
         </header>
 
         <main>
+            <!-- ============ LEFT: EDITOR ============ -->
             <div class="editor-panel">
-                <div class="canvas-header">
-                    <span>Interactive Canvas (Represents Size)</span>
-                    <div class="controls">
-                        <button id="smooth-btn" title="Fix sharp corners">✨ Fix Smoothness</button>
-                        <button id="add-wave-btn">+ Add Wave</button>
-                        <button id="remove-wave-btn">- Remove</button>
+                <!-- Toolbar -->
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <div class="mode-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="fill-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span id="mode-label">Fill</span>
+                        </div>
+                    </div>
+
+                    <div class="toolbar-group" id="stroke-group" style="display:none;">
+                        <label class="toolbar-label">Stroke
+                            <input type="number" id="stroke-width-input" min="1" max="20" value="3" class="toolbar-input input-sm">
+                        </label>
+                    </div>
+                    <div class="toolbar-group" id="fill-edge-group">
+                        <label class="toolbar-label">Fill:
+                            <select id="fill-edge-select" class="toolbar-input" style="height:28px;">
+                                <option value="bottom">Bottom</option>
+                                <option value="top">Top</option>
+                                <option value="left">Left</option>
+                                <option value="right">Right</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="toolbar-group">
+                        <button id="flip-btn" class="btn btn-tool" title="Flip wave direction">⮂ Flip</button>
+                        <button id="smooth-btn" class="btn btn-tool" title="Auto-smooth anchor points">✨ Smooth</button>
+                        <button id="add-wave-btn" class="btn btn-tool">+ Wave</button>
+                        <button id="remove-wave-btn" class="btn btn-tool">− Wave</button>
                     </div>
                 </div>
-                <div class="canvas-container">
-                    <svg id="wave-canvas" preserveAspectRatio="none">
-                        <defs>
-                            <linearGradient id="wave-gradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.9"/>
-                                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.9"/>
-                            </linearGradient>
-                        </defs>
-                        <!-- Main filled shape -->
-                        <path id="wave-path" fill="url(#wave-gradient)" />
-                        
-                        <!-- Helper lines for control points -->
-                        <path id="helper-lines" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-dasharray="6" fill="none" />
-                        
-                        <!-- Points will be injected here via JS -->
-                        <g id="points-container"></g>
-                    </svg>
+
+                <!-- Canvas -->
+                <div class="canvas-wrapper">
+                    <div class="canvas-container">
+                        <svg id="wave-canvas" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="wave-gradient" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.9"/>
+                                    <stop offset="100%" stop-color="#a855f7" stop-opacity="0.85"/>
+                                </linearGradient>
+                            </defs>
+                            <path id="wave-path" />
+                            <path id="wave-stroke" fill="none" stroke="rgba(255,255,255,0.01)" stroke-width="20" pointer-events="stroke" style="cursor: crosshair;" />
+                            <path id="helper-lines" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-dasharray="5" fill="none" />
+                            <g id="points-container"></g>
+                        </svg>
+                        <!-- Point Inspector (shows when a point is selected) -->
+                        <div class="point-inspector" id="point-inspector" style="display:none;">
+                            <div class="inspector-header">
+                                <span id="inspector-title">Point</span>
+                                <button id="inspector-close" class="btn-icon">✕</button>
+                            </div>
+                            <div class="inspector-body">
+                                <label class="inspector-label">X (width %)
+                                    <input type="number" id="inspector-x" min="0" max="100" step="1" class="toolbar-input">
+                                </label>
+                                <label class="inspector-label">Y (height %)
+                                    <input type="number" id="inspector-y" min="0" max="100" step="1" class="toolbar-input">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Footer -->
                 <div class="canvas-footer">
                     <div class="legend">
-                        <span class="legend-item"><span class="dot anchor-dot"></span> Anchor Point</span>
-                        <span class="legend-item"><span class="dot control-dot"></span> Control Point</span>
+                        <span class="legend-item"><span class="dot anchor-dot"></span> Anchor</span>
+                        <span class="legend-item"><span class="dot control-dot"></span> Control</span>
+                        <span class="legend-item" id="corner-legend"><span class="dot corner-dot"></span> Corner</span>
                     </div>
-                    <p class="hint">Drag the points to shape the wave!</p>
+                    <p class="hint">Click a point to edit its exact position</p>
                 </div>
             </div>
 
+            <!-- ============ RIGHT: CODE ============ -->
             <div class="code-panel">
                 <div class="code-header">
                     <span>Generated Dart Code</span>
-                    <button id="copy-btn">Copy Code</button>
+                    <button id="copy-btn" class="btn btn-primary">Copy Code</button>
                 </div>
                 <pre><code id="code-output"></code></pre>
             </div>
