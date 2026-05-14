@@ -34,8 +34,9 @@ body {
     padding: 1.5rem 2rem;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 600px;
 }
 
 header {
@@ -228,41 +229,70 @@ input:checked + .toggle-slider::before { transform: translateX(20px); }
 
 /* ── Point Inspector ────────────────────────────────────── */
 .point-inspector {
-    position: absolute;
-    top: 0; left: 0; right: 0;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0.75rem 1.25rem;
-    z-index: 10;
-    animation: slideDown .2s ease;
-}
-@keyframes slideDown {
-    from { transform: translateY(-100%); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+    padding: 0.5rem 1rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 42px;
 }
 
-.inspector-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
+.inspector-title-text {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    color: var(--text);
 }
-#inspector-title { font-weight: 600; font-size: 0.9rem; }
 
-.inspector-body {
+.inspector-controls {
     display: flex;
-    gap: 1rem;
     align-items: center;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
 }
+
 .inspector-label {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
+    white-space: nowrap;
 }
-.inspector-label .toolbar-input { width: 70px; }
+.inspector-input { width: 58px; }
+
+.btn-delete {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s ease;
+    white-space: nowrap;
+}
+.btn-delete:hover {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: #ef4444;
+}
+
+.point-inspector .btn-icon {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* When no point is selected, show muted hint */
+.point-inspector.no-selection .inspector-title-text {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-style: italic;
+}
 
 /* ── Footer ─────────────────────────────────────────────── */
 .canvas-footer {

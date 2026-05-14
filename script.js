@@ -30,6 +30,8 @@ const inspTitle    = $('#inspector-title');
 const inspClose    = $('#inspector-close');
 const inspX        = $('#inspector-x');
 const inspY        = $('#inspector-y');
+const inspControls = $('#inspector-controls');
+const inspDelete   = $('#inspector-delete');
 
 // ── State ───────────────────────────────────────────────────
 let isFilled    = true;
@@ -72,7 +74,6 @@ function render() {
 }
 
 function drawSVG() {
-    pointsG.innerHTML = '';
 
     // Helper lines (control → anchor connections and straight edges)
     let hd = `M${px(points[0])} `;
@@ -131,33 +132,58 @@ function drawSVG() {
     // Render interactive dots
     let allPoints = isFilled ? [...points, ...corners] : points;
 
+    if (pointsG.children.length !== allPoints.length) {
+        pointsG.innerHTML = '';
+        allPoints.forEach((p, i) => {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            el.setAttribute('r', 8);
+            
+            el.addEventListener('mousedown',  e => { startDrag(i); e.stopPropagation(); });
+            let pointLastTap = 0;
+            el.addEventListener('touchstart', e => { 
+                const now = Date.now();
+                if (now - pointLastTap < 300) {
+                    if (allPoints[i].type === 'corner') {
+                        e.preventDefault();
+                        const cIdx = i - points.length;
+                        corners.splice(cIdx, 1);
+                        if (selected === i) selectPoint(null);
+                        render();
+                        return;
+                    }
+                }
+                pointLastTap = now;
+                startDrag(i); 
+                e.stopPropagation(); 
+            }, { passive: false });
+            
+            el.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                if (allPoints[i].type === 'corner') {
+                    const cIdx = i - points.length;
+                    corners.splice(cIdx, 1);
+                    if (selected === i) selectPoint(null);
+                    render();
+                }
+            });
+
+            pointsG.appendChild(el);
+        });
+    }
+
+    // Update positions and styles for existing DOM nodes
     allPoints.forEach((p, i) => {
-        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const el = pointsG.children[i];
         el.setAttribute('cx', p.x * svgW);
         el.setAttribute('cy', p.y * svgH);
-        el.setAttribute('r', 8);
         
-        if (p.type === 'control') el.classList.add('point', 'control-point');
-        else if (p.type === 'corner') el.classList.add('point', 'corner-point');
-        else el.classList.add('point', 'anchor-point');
+        let cls = 'point ';
+        if (p.type === 'control') cls += 'control-point';
+        else if (p.type === 'corner') cls += 'corner-point';
+        else cls += 'anchor-point';
         
-        if (i === selected) el.classList.add('selected');
-
-        el.addEventListener('mousedown',  e => { startDrag(i); e.stopPropagation(); });
-        el.addEventListener('touchstart', e => { startDrag(i); e.stopPropagation(); }, { passive: false });
-        
-        // Right click to delete corner points
-        el.addEventListener('contextmenu', e => {
-            e.preventDefault();
-            if (p.type === 'corner') {
-                const cIdx = i - points.length;
-                corners.splice(cIdx, 1);
-                if (selected === i) selectPoint(null);
-                render();
-            }
-        });
-
-        pointsG.appendChild(el);
+        if (i === selected) cls += ' selected';
+        el.setAttribute('class', cls);
     });
 }
 
@@ -254,11 +280,10 @@ function distToSegment(px, py, x1, y1, x2, y2) {
     return Math.hypot(px - projX, py - projY);
 }
 
-// Double click to add point on ANY edge
-$('svg').addEventListener('dblclick', e => {
+function handleAddPoint(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const cx = (e.clientX - rect.left) / svgW;
-    const cy = (e.clientY - rect.top) / svgH;
+    const cx = (clientX - rect.left) / svgW;
+    const cy = (clientY - rect.top) / svgH;
     
     let bestDist = Infinity;
     let bestInsertIdx = -1;
@@ -327,7 +352,25 @@ $('svg').addEventListener('dblclick', e => {
         render();
         return;
     }
+}
+
+// Double click to add point on ANY edge
+$('svg').addEventListener('dblclick', e => {
+    handleAddPoint(e.clientX, e.clientY);
 });
+
+// Double tap support for mobile
+let lastTapTime = 0;
+$('svg').addEventListener('touchstart', e => {
+    const now = Date.now();
+    if (now - lastTapTime < 300) {
+        lastTapTime = 0;
+        handleAddPoint(e.touches[0].clientX, e.touches[0].clientY);
+        e.preventDefault();
+    } else {
+        lastTapTime = now;
+    }
+}, { passive: false });
 
 function onMove(clientX, clientY) {
     if (draggingAllStart) {
@@ -386,7 +429,7 @@ function endDrag() {
 window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
 window.addEventListener('mouseup', endDrag);
 window.addEventListener('touchmove', e => {
-    if (dragging !== null) { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }
+    if (dragging !== null || draggingAllStart) { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }
 }, { passive: false });
 window.addEventListener('touchend', endDrag);
 
@@ -397,9 +440,14 @@ canvas.addEventListener('mousedown', () => selectPoint(null));
 function selectPoint(idx) {
     selected = idx;
     if (idx === null) {
-        inspector.style.display = 'none';
+        // Show placeholder state
+        inspector.classList.add('no-selection');
+        inspControls.style.display = 'none';
+        inspTitle.textContent = 'Tap a point to edit';
     } else {
-        inspector.style.display = '';
+        // Show active editing state
+        inspector.classList.remove('no-selection');
+        inspControls.style.display = 'flex';
         updateInspector();
     }
 }
@@ -411,21 +459,46 @@ function updateInspector() {
     const p = allPoints[selected];
     let label = '';
     let displayIdx = selected;
+    let canDelete = false;
+    let deleteLabel = '';
     
     if (p.type === 'corner') {
         label = 'Corner Point';
         displayIdx = selected - points.length + 1;
+        canDelete = true;
+        deleteLabel = 'Delete Corner';
     } else if (p.type === 'control') {
         label = 'Control Point';
+        if (selected >= points.length) {
+            // Control in corners array — always deletable
+            canDelete = true;
+            deleteLabel = 'Delete Control';
+        } else {
+            // Control in wave — deletable if more than 1 wave segment
+            canDelete = points.length > 3;
+            deleteLabel = 'Delete Control';
+        }
     } else if (p.type === 'start') {
         label = 'Start Point';
+        canDelete = false;
     } else {
         label = 'Anchor Point';
+        // Anchor in wave — deletable if more than 1 wave segment
+        canDelete = points.length > 3;
+        deleteLabel = 'Delete Anchor';
     }
 
     inspTitle.textContent = `${label}  #${displayIdx}`;
     inspX.value = Math.round(p.x * 100);
     inspY.value = Math.round(p.y * 100);
+    
+    // Show delete button with contextual label
+    if (canDelete) {
+        inspDelete.style.display = '';
+        inspDelete.textContent = '🗑 ' + deleteLabel;
+    } else {
+        inspDelete.style.display = 'none';
+    }
 }
 
 inspX.addEventListener('input', () => {
@@ -453,6 +526,48 @@ inspY.addEventListener('input', () => {
     } else {
         corners[selected - points.length].y = v / 100;
     }
+    render();
+});
+
+// Delete point via inspector button
+inspDelete.addEventListener('click', () => {
+    if (selected === null) return;
+    let allPoints = isFilled ? [...points, ...corners] : points;
+    if (selected >= allPoints.length) return;
+    
+    const p = allPoints[selected];
+    
+    if (selected >= points.length) {
+        // Point is in the corners array — just splice it out
+        const cIdx = selected - points.length;
+        corners.splice(cIdx, 1);
+    } else if (p.type === 'control') {
+        // Control in wave — remove the control + its paired anchor
+        if (points.length <= 3) return;
+        points.splice(selected, 2);
+        // Rescale remaining points to fill width
+        const segs = (points.length - 1) / 2;
+        const lastAnch = points[points.length - 1];
+        if (lastAnch.x !== 0) {
+            const scale = 1.0 / lastAnch.x;
+            points.forEach(pt => { pt.x *= scale; });
+        }
+        points[points.length - 1].x = 1.0;
+    } else if (p.type === 'anchor') {
+        // Anchor in wave — remove the control before it + the anchor
+        if (points.length <= 3) return;
+        points.splice(selected - 1, 2);
+        // Rescale remaining points to fill width
+        const segs = (points.length - 1) / 2;
+        const lastAnch = points[points.length - 1];
+        if (lastAnch.x !== 0) {
+            const scale = 1.0 / lastAnch.x;
+            points.forEach(pt => { pt.x *= scale; });
+        }
+        points[points.length - 1].x = 1.0;
+    }
+    
+    selectPoint(null);
     render();
 });
 

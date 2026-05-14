@@ -63,6 +63,23 @@
                     </div>
                 </div>
 
+                <!-- Point Inspector (always-visible compact bar) -->
+                <div class="point-inspector" id="point-inspector">
+                    <span id="inspector-title" class="inspector-title-text">Tap a point to edit</span>
+                    <div id="inspector-controls" class="inspector-controls" style="display:none;">
+                        <label class="inspector-label">X (width %)
+                            <input type="number" id="inspector-x" min="0" max="100" step="1"
+                                class="toolbar-input inspector-input">
+                        </label>
+                        <label class="inspector-label">Y (height %)
+                            <input type="number" id="inspector-y" min="0" max="100" step="1"
+                                class="toolbar-input inspector-input">
+                        </label>
+                        <button id="inspector-delete" class="btn btn-delete" title="Delete point" style="display:none;">🗑</button>
+                        <button id="inspector-close" class="btn-icon" title="Deselect">✕</button>
+                    </div>
+                </div>
+
                 <!-- Canvas -->
                 <div class="canvas-wrapper">
                     <div class="canvas-container">
@@ -80,23 +97,6 @@
                                 stroke-dasharray="5" fill="none" />
                             <g id="points-container"></g>
                         </svg>
-                        <!-- Point Inspector -->
-                        <div class="point-inspector" id="point-inspector" style="display:none;">
-                            <div class="inspector-header">
-                                <span id="inspector-title">Point</span>
-                                <button id="inspector-close" class="btn-icon">✕</button>
-                            </div>
-                            <div class="inspector-body">
-                                <label class="inspector-label">X (width %)
-                                    <input type="number" id="inspector-x" min="0" max="100" step="1"
-                                        class="toolbar-input">
-                                </label>
-                                <label class="inspector-label">Y (height %)
-                                    <input type="number" id="inspector-y" min="0" max="100" step="1"
-                                        class="toolbar-input">
-                                </label>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
