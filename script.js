@@ -6,8 +6,7 @@
 // ── DOM References ──────────────────────────────────────────
 const $ = (s) => document.querySelector(s);
 const canvas       = $('#wave-canvas');
-const wavePath     = $('#wave-path');
-const waveStroke   = $('#wave-stroke');
+const layersContainer = $('#layers-container');
 const helperLines  = $('#helper-lines');
 const pointsG      = $('#points-container');
 const codeOutput   = $('#code-output');
@@ -23,6 +22,12 @@ const strokeInput  = $('#stroke-width-input');
 const fillEdgeGroup = $('#fill-edge-group');
 const fillEdgeSelect = $('#fill-edge-select');
 const cornerLegend = $('#corner-legend');
+const widthSlider  = $('#width-slider');
+const heightSlider = $('#height-slider');
+
+const layerSelect  = $('#layer-select');
+const addLayerBtn  = $('#add-layer-btn');
+const removeLayerBtn = $('#remove-layer-btn');
 
 // Inspector
 const inspector    = $('#point-inspector');
@@ -34,26 +39,122 @@ const inspControls = $('#inspector-controls');
 const inspDelete   = $('#inspector-delete');
 
 // ── State ───────────────────────────────────────────────────
+let layers = [];
+let activeLayerIndex = 0;
+
 let isFilled    = true;
 let currentEdge = 'bottom';
 let strokeWidth = 3;
+let lastWidth   = 100;
+let lastHeight  = 100;
 let svgW        = 0;
 let svgH        = 0;
 let dragging    = null;  // index of point being dragged
 let selected    = null;  // index of point selected for inspector
+let isTypingCode = false;
 
-let points = [
-    { type: 'start',   x: 0.00, y: 0.50 },
-    { type: 'control', x: 0.25, y: 0.70 },
-    { type: 'anchor',  x: 0.50, y: 0.55 },
-    { type: 'control', x: 0.75, y: 0.40 },
-    { type: 'anchor',  x: 1.00, y: 0.55 },
-];
+let points = [];
+let corners = [];
 
-let corners = [
-    { type: 'corner', x: 1.00, y: 1.00 }, // Bottom Right
-    { type: 'corner', x: 0.00, y: 1.00 }, // Bottom Left
-];
+function createDefaultLayer() {
+    return {
+        isFilled: true,
+        currentEdge: 'bottom',
+        strokeWidth: 3,
+        lastWidth: 100,
+        lastHeight: 100,
+        points: [
+            { type: 'start',   x: 0.00, y: 0.50 },
+            { type: 'control', x: 0.25, y: 0.70 },
+            { type: 'anchor',  x: 0.50, y: 0.55 },
+            { type: 'control', x: 0.75, y: 0.40 },
+            { type: 'anchor',  x: 1.00, y: 0.55 },
+        ],
+        corners: [
+            { type: 'corner', x: 1.00, y: 1.00 }, // Bottom Right
+            { type: 'corner', x: 0.00, y: 1.00 }, // Bottom Left
+        ]
+    };
+}
+
+function saveCurrentLayer() {
+    layers[activeLayerIndex] = {
+        isFilled,
+        currentEdge,
+        strokeWidth,
+        lastWidth,
+        lastHeight,
+        points: JSON.parse(JSON.stringify(points)),
+        corners: JSON.parse(JSON.stringify(corners))
+    };
+}
+
+function loadLayer(idx) {
+    activeLayerIndex = idx;
+    const l = layers[idx];
+    isFilled = l.isFilled;
+    currentEdge = l.currentEdge;
+    strokeWidth = l.strokeWidth;
+    lastWidth = l.lastWidth;
+    lastHeight = l.lastHeight;
+    points = JSON.parse(JSON.stringify(l.points));
+    corners = JSON.parse(JSON.stringify(l.corners));
+    
+    fillToggle.checked = isFilled;
+    modeLabel.textContent = isFilled ? 'Fill' : 'Line';
+    strokeGroup.style.display = isFilled ? 'none' : 'flex';
+    fillEdgeGroup.style.display = isFilled ? 'flex' : 'none';
+    cornerLegend.style.display = isFilled ? 'flex' : 'none';
+    strokeInput.value = strokeWidth;
+    fillEdgeSelect.value = currentEdge;
+    widthSlider.value = lastWidth;
+    heightSlider.value = lastHeight;
+    
+    selected = null;
+    selectPoint(null);
+}
+
+layers.push(createDefaultLayer());
+loadLayer(0);
+
+function updateLayerSelect() {
+    layerSelect.innerHTML = '';
+    layers.forEach((_, i) => {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = `Wave ${i + 1}`;
+        layerSelect.appendChild(opt);
+    });
+    layerSelect.value = activeLayerIndex;
+    removeLayerBtn.disabled = layers.length <= 1;
+}
+updateLayerSelect();
+
+layerSelect.addEventListener('change', e => {
+    saveCurrentLayer();
+    loadLayer(parseInt(e.target.value, 10));
+    render();
+});
+
+addLayerBtn.addEventListener('click', () => {
+    saveCurrentLayer();
+    // Offset the new layer slightly for visibility
+    const newL = createDefaultLayer();
+    newL.points.forEach(p => { p.y -= 0.1; });
+    layers.push(newL);
+    loadLayer(layers.length - 1);
+    updateLayerSelect();
+    render();
+});
+
+removeLayerBtn.addEventListener('click', () => {
+    if (layers.length <= 1) return;
+    layers.splice(activeLayerIndex, 1);
+    const newIdx = Math.max(0, activeLayerIndex - 1);
+    loadLayer(newIdx);
+    updateLayerSelect();
+    render();
+});
 
 // ── SVG size tracking ───────────────────────────────────────
 const ro = new ResizeObserver(entries => {
@@ -68,14 +169,89 @@ ro.observe(canvas);
 // ── Render ──────────────────────────────────────────────────
 function render() {
     if (svgW === 0 || svgH === 0) return;
+    saveCurrentLayer();
     drawSVG();
-    generateCode();
+    if (!isTypingCode) {
+        generateCode();
+    }
     updateInspector();
 }
 
 function drawSVG() {
+    layersContainer.innerHTML = '';
+    
+    layers.forEach((l, idx) => {
+        let d = `M${l.points[0].x * svgW},${l.points[0].y * svgH} `;
+        let curveD = d;
+        for (let i = 1; i < l.points.length; i += 2) {
+            const c = l.points[i], a = l.points[i + 1];
+            const seg = `Q${c.x * svgW},${c.y * svgH} ${a.x * svgW},${a.y * svgH} `;
+            d += seg;
+            curveD += seg;
+        }
+        
+        let pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        if (l.isFilled) {
+            for (let i = 0; i < l.corners.length; i++) {
+                if (l.corners[i].type === 'corner') {
+                    d += `L${l.corners[i].x * svgW},${l.corners[i].y * svgH} `;
+                } else if (l.corners[i].type === 'control') {
+                    const ctrl = l.corners[i];
+                    let anch = (i + 1 < l.corners.length) ? l.corners[i+1] : l.points[0];
+                    if (i + 1 < l.corners.length) i++;
+                    d += `Q${ctrl.x * svgW},${ctrl.y * svgH} ${anch.x * svgW},${anch.y * svgH} `;
+                }
+            }
+            d += `Z`;
+            pathEl.setAttribute('fill', `url(#wave-gradient-${idx % 4})`);
+        } else {
+            pathEl.setAttribute('fill', 'none');
+            pathEl.setAttribute('stroke', `url(#wave-gradient-${idx % 4})`);
+            pathEl.setAttribute('stroke-width', l.strokeWidth);
+            pathEl.setAttribute('stroke-linecap', 'round');
+        }
+        pathEl.setAttribute('d', d);
+        
+        if (idx !== activeLayerIndex) {
+            pathEl.setAttribute('opacity', '0.4');
+        }
+        layersContainer.appendChild(pathEl);
+        
+        let strokeEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        strokeEl.setAttribute('fill', 'none');
+        strokeEl.setAttribute('stroke', 'rgba(255,255,255,0.01)');
+        strokeEl.setAttribute('stroke-width', '20');
+        strokeEl.setAttribute('pointer-events', 'stroke');
+        strokeEl.style.cursor = 'crosshair';
+        strokeEl.setAttribute('d', curveD);
+        
+        const dragStart = (e) => {
+            if (activeLayerIndex !== idx) {
+                saveCurrentLayer();
+                loadLayer(idx);
+                layerSelect.value = idx;
+                render();
+            }
+            startDragAll(e);
+        };
+        const touchDragStart = (e) => {
+            if (activeLayerIndex !== idx) {
+                saveCurrentLayer();
+                loadLayer(idx);
+                layerSelect.value = idx;
+                render();
+            }
+            startDragAllTouch(e);
+        };
+        
+        pathEl.addEventListener('mousedown', dragStart);
+        pathEl.addEventListener('touchstart', touchDragStart, { passive: false });
+        strokeEl.addEventListener('mousedown', dragStart);
+        strokeEl.addEventListener('touchstart', touchDragStart, { passive: false });
+        
+        layersContainer.appendChild(strokeEl);
+    });
 
-    // Helper lines (control → anchor connections and straight edges)
     let hd = `M${px(points[0])} `;
     for (let i = 1; i < points.length; i++) {
         hd += `L${px(points[i])} `;
@@ -88,48 +264,6 @@ function drawSVG() {
     }
     helperLines.setAttribute('d', hd);
 
-    // Main wave path and stroke path
-    let d = `M${points[0].x * svgW},${points[0].y * svgH} `;
-    let curveD = d; // Only the bezier curve, no corners or Z
-
-    for (let i = 1; i < points.length; i += 2) {
-        const c = points[i], a = points[i + 1];
-        const seg = `Q${c.x * svgW},${c.y * svgH} ${a.x * svgW},${a.y * svgH} `;
-        d += seg;
-        curveD += seg;
-    }
-    
-    waveStroke.setAttribute('d', curveD);
-
-    if (isFilled) {
-        for (let i = 0; i < corners.length; i++) {
-            if (corners[i].type === 'corner') {
-                d += `L${corners[i].x * svgW},${corners[i].y * svgH} `;
-            } else if (corners[i].type === 'control') {
-                const ctrl = corners[i];
-                let anch;
-                if (i + 1 < corners.length) {
-                    anch = corners[i+1];
-                    i++;
-                } else {
-                    anch = points[0];
-                }
-                d += `Q${ctrl.x * svgW},${ctrl.y * svgH} ${anch.x * svgW},${anch.y * svgH} `;
-            }
-        }
-        d += `Z`;
-        wavePath.setAttribute('fill', 'url(#wave-gradient)');
-        wavePath.removeAttribute('stroke');
-        wavePath.removeAttribute('stroke-width');
-    } else {
-        wavePath.setAttribute('fill', 'none');
-        wavePath.setAttribute('stroke', 'url(#wave-gradient)');
-        wavePath.setAttribute('stroke-width', strokeWidth);
-        wavePath.setAttribute('stroke-linecap', 'round');
-    }
-    wavePath.setAttribute('d', d);
-
-    // Render interactive dots
     let allPoints = isFilled ? [...points, ...corners] : points;
 
     if (pointsG.children.length !== allPoints.length) {
@@ -171,7 +305,6 @@ function drawSVG() {
         });
     }
 
-    // Update positions and styles for existing DOM nodes
     allPoints.forEach((p, i) => {
         const el = pointsG.children[i];
         el.setAttribute('cx', p.x * svgW);
@@ -264,12 +397,6 @@ function startDragAllTouch(e) {
     checkLongPress((e.touches[0].clientX - rect.left) / svgW, (e.touches[0].clientY - rect.top) / svgH);
 }
 
-wavePath.addEventListener('mousedown', startDragAll);
-wavePath.addEventListener('touchstart', startDragAllTouch, { passive: false });
-
-waveStroke.addEventListener('mousedown', startDragAll);
-waveStroke.addEventListener('touchstart', startDragAllTouch, { passive: false });
-
 function distToSegment(px, py, x1, y1, x2, y2) {
     const l2 = (x1 - x2)**2 + (y1 - y2)**2;
     if (l2 === 0) return Math.hypot(px - x1, py - y1);
@@ -289,7 +416,6 @@ function handleAddPoint(clientX, clientY) {
     let bestInsertIdx = -1;
     let bestT = 0;
 
-    // Check Wave Curve
     for (let i = 0; i < points.length - 1; i += 2) {
         const p0 = points[i];
         const p1 = points[i+1];
@@ -307,7 +433,6 @@ function handleAddPoint(clientX, clientY) {
         }
     }
     
-    // Check Straight Edges
     let bestEdgeDist = Infinity;
     let edgeInsertIdx = -1;
     
@@ -319,9 +444,7 @@ function handleAddPoint(clientX, clientY) {
         });
     }
 
-    // Determine which edge is closer
     if (bestDist < 0.05 && bestDist <= bestEdgeDist) {
-        // SPLIT WAVE
         const t = Math.max(0.05, Math.min(0.95, bestT)); 
         const p0 = points[bestInsertIdx];
         const p1 = points[bestInsertIdx + 1];
@@ -346,7 +469,6 @@ function handleAddPoint(clientX, clientY) {
     }
     
     if (isFilled && bestEdgeDist < 0.05) {
-        // INSERT CORNER
         corners.splice(edgeInsertIdx, 0, { type: 'corner', x: cx, y: cy });
         selectPoint(points.length + edgeInsertIdx);
         render();
@@ -354,12 +476,10 @@ function handleAddPoint(clientX, clientY) {
     }
 }
 
-// Double click to add point on ANY edge
 $('svg').addEventListener('dblclick', e => {
     handleAddPoint(e.clientX, e.clientY);
 });
 
-// Double tap support for mobile
 let lastTapTime = 0;
 $('svg').addEventListener('touchstart', e => {
     const now = Date.now();
@@ -433,19 +553,16 @@ window.addEventListener('touchmove', e => {
 }, { passive: false });
 window.addEventListener('touchend', endDrag);
 
-// Click on canvas background = deselect
 canvas.addEventListener('mousedown', () => selectPoint(null));
 
 // ── Point Inspector ─────────────────────────────────────────
 function selectPoint(idx) {
     selected = idx;
     if (idx === null) {
-        // Show placeholder state
         inspector.classList.add('no-selection');
         inspControls.style.display = 'none';
         inspTitle.textContent = 'Tap a point to edit';
     } else {
-        // Show active editing state
         inspector.classList.remove('no-selection');
         inspControls.style.display = 'flex';
         updateInspector();
@@ -470,11 +587,9 @@ function updateInspector() {
     } else if (p.type === 'control') {
         label = 'Control Point';
         if (selected >= points.length) {
-            // Control in corners array — always deletable
             canDelete = true;
             deleteLabel = 'Delete Control';
         } else {
-            // Control in wave — deletable if more than 1 wave segment
             canDelete = points.length > 3;
             deleteLabel = 'Delete Control';
         }
@@ -483,7 +598,6 @@ function updateInspector() {
         canDelete = false;
     } else {
         label = 'Anchor Point';
-        // Anchor in wave — deletable if more than 1 wave segment
         canDelete = points.length > 3;
         deleteLabel = 'Delete Anchor';
     }
@@ -492,7 +606,6 @@ function updateInspector() {
     inspX.value = Math.round(p.x * 100);
     inspY.value = Math.round(p.y * 100);
     
-    // Show delete button with contextual label
     if (canDelete) {
         inspDelete.style.display = '';
         inspDelete.textContent = '🗑 ' + deleteLabel;
@@ -529,7 +642,6 @@ inspY.addEventListener('input', () => {
     render();
 });
 
-// Delete point via inspector button
 inspDelete.addEventListener('click', () => {
     if (selected === null) return;
     let allPoints = isFilled ? [...points, ...corners] : points;
@@ -538,15 +650,11 @@ inspDelete.addEventListener('click', () => {
     const p = allPoints[selected];
     
     if (selected >= points.length) {
-        // Point is in the corners array — just splice it out
         const cIdx = selected - points.length;
         corners.splice(cIdx, 1);
     } else if (p.type === 'control') {
-        // Control in wave — remove the control + its paired anchor
         if (points.length <= 3) return;
         points.splice(selected, 2);
-        // Rescale remaining points to fill width
-        const segs = (points.length - 1) / 2;
         const lastAnch = points[points.length - 1];
         if (lastAnch.x !== 0) {
             const scale = 1.0 / lastAnch.x;
@@ -554,11 +662,8 @@ inspDelete.addEventListener('click', () => {
         }
         points[points.length - 1].x = 1.0;
     } else if (p.type === 'anchor') {
-        // Anchor in wave — remove the control before it + the anchor
         if (points.length <= 3) return;
         points.splice(selected - 1, 2);
-        // Rescale remaining points to fill width
-        const segs = (points.length - 1) / 2;
         const lastAnch = points[points.length - 1];
         if (lastAnch.x !== 0) {
             const scale = 1.0 / lastAnch.x;
@@ -576,7 +681,7 @@ inspClose.addEventListener('click', () => selectPoint(null));
 // ── Code Generation ─────────────────────────────────────────
 function fmt(v) {
     const s = v.toFixed(2);
-    return parseFloat(s).toString();  // drops trailing zeros cleanly
+    return parseFloat(s).toString();
 }
 
 function fmtX(nx) {
@@ -594,60 +699,80 @@ function fmtY(ny) {
 function generateCode() {
     let c = '';
 
-    if (isFilled) {
+    let allFilled = layers.every(l => l.isFilled);
+    
+    if (allFilled && layers.length > 1) {
+        c += `Path getClip(Size size) {\n`;
+        c += `  Path finalPath = Path();\n\n`;
+    } else if (allFilled && layers.length === 1) {
         c += `Path getClip(Size size) {\n`;
     } else {
-        c += `void paintWave(Canvas canvas, Size size) {\n`;
+        c += `void paintWave(Canvas canvas, Size size) {\n\n`;
     }
 
-    c += `  Path path = Path();\n\n`;
-    c += `  // Start position\n`;
-    c += `  path.moveTo(${fmtX(points[0].x)}, ${fmtY(points[0].y)});\n\n`;
+    layers.forEach((l, idx) => {
+        if (layers.length > 1) c += `  // --- Wave ${idx + 1} ---\n`;
+        
+        const pathVar = (allFilled && layers.length === 1) ? 'path' : `path${idx}`;
+        
+        c += `  Path ${pathVar} = Path();\n`;
+        c += `  ${pathVar}.moveTo(${fmtX(l.points[0].x)}, ${fmtY(l.points[0].y)});\n\n`;
 
-    let w = 1;
-    for (let i = 1; i < points.length; i += 2) {
-        const ctrl = points[i], anch = points[i + 1];
-        c += `  // Wave ${w}\n`;
-        c += `  path.quadraticBezierTo(\n`;
-        c += `    ${fmtX(ctrl.x)},\n`;
-        c += `    ${fmtY(ctrl.y)},\n`;
-        c += `    ${fmtX(anch.x)},\n`;
-        c += `    ${fmtY(anch.y)},\n`;
-        c += `  );\n\n`;
-        w++;
-    }
-
-    if (isFilled) {
-        c += `  // Finish shape\n`;
-        for (let i = 0; i < corners.length; i++) {
-            if (corners[i].type === 'corner') {
-                c += `  path.lineTo(${fmtX(corners[i].x)}, ${fmtY(corners[i].y)});\n`;
-            } else if (corners[i].type === 'control') {
-                const ctrl = corners[i];
-                let anch;
-                if (i + 1 < corners.length) {
-                    anch = corners[i+1];
-                    i++;
-                } else {
-                    anch = points[0];
-                }
-                c += `  path.quadraticBezierTo(\n`;
-                c += `    ${fmtX(ctrl.x)},\n`;
-                c += `    ${fmtY(ctrl.y)},\n`;
-                c += `    ${fmtX(anch.x)},\n`;
-                c += `    ${fmtY(anch.y)},\n`;
-                c += `  );\n`;
-            }
+        let w = 1;
+        for (let i = 1; i < l.points.length; i += 2) {
+            const ctrl = l.points[i], anch = l.points[i + 1];
+            c += `  ${pathVar}.quadraticBezierTo(\n`;
+            c += `    ${fmtX(ctrl.x)},\n`;
+            c += `    ${fmtY(ctrl.y)},\n`;
+            c += `    ${fmtX(anch.x)},\n`;
+            c += `    ${fmtY(anch.y)},\n`;
+            c += `  );\n`;
+            w++;
         }
-        c += `  path.close();\n\n`;
+        c += `\n`;
+
+        if (l.isFilled) {
+            for (let i = 0; i < l.corners.length; i++) {
+                if (l.corners[i].type === 'corner') {
+                    c += `  ${pathVar}.lineTo(${fmtX(l.corners[i].x)}, ${fmtY(l.corners[i].y)});\n`;
+                } else if (l.corners[i].type === 'control') {
+                    const ctrl = l.corners[i];
+                    let anch = (i + 1 < l.corners.length) ? l.corners[i+1] : l.points[0];
+                    if (i + 1 < l.corners.length) i++;
+                    c += `  ${pathVar}.quadraticBezierTo(\n`;
+                    c += `    ${fmtX(ctrl.x)},\n`;
+                    c += `    ${fmtY(ctrl.y)},\n`;
+                    c += `    ${fmtX(anch.x)},\n`;
+                    c += `    ${fmtY(anch.y)},\n`;
+                    c += `  );\n`;
+                }
+            }
+            c += `  ${pathVar}.close();\n\n`;
+        }
+        
+        if (allFilled && layers.length > 1) {
+            c += `  finalPath.addPath(${pathVar}, Offset.zero);\n\n`;
+        } else if (!allFilled) {
+            c += `  final paint${idx} = Paint()\n`;
+            if (l.isFilled) {
+                c += `    ..color = Colors.blue.withOpacity(0.5)\n`;
+                c += `    ..style = PaintingStyle.fill;\n\n`;
+            } else {
+                c += `    ..color = Colors.blue\n`;
+                c += `    ..style = PaintingStyle.stroke\n`;
+                c += `    ..strokeWidth = ${l.strokeWidth}.0;\n\n`;
+            }
+            c += `  canvas.drawPath(${pathVar}, paint${idx});\n\n`;
+        }
+    });
+
+    if (allFilled && layers.length > 1) {
+        c += `  return finalPath;\n`;
+        c += `}`;
+    } else if (allFilled && layers.length === 1) {
         c += `  return path;\n`;
         c += `}`;
     } else {
-        c += `  final paint = Paint()\n`;
-        c += `    ..color = Colors.blue\n`;
-        c += `    ..style = PaintingStyle.stroke\n`;
-        c += `    ..strokeWidth = ${strokeWidth}.0;\n\n`;
-        c += `  canvas.drawPath(path, paint);\n`;
         c += `}`;
     }
 
@@ -658,15 +783,110 @@ function highlight(code) {
     return code
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/(\/\/.+)/g, '<span class="syn-cmt">$1</span>')
-        .replace(/\b(Path|Size|Paint|Canvas|Colors|PaintingStyle|CustomClipper)\b/g, '<span class="syn-kw">$1</span>')
-        .replace(/\b(getClip|paintWave|quadraticBezierTo|lineTo|moveTo|close|drawPath)\b/g, '<span class="syn-fn">$1</span>')
-        .replace(/\b(size\.width|size\.height)\b/g, '<span class="syn-prop">$1</span>')
+        .replace(/\b(Path|Size|Paint|Canvas|Colors|PaintingStyle|CustomClipper|Offset)\b/g, '<span class="syn-kw">$1</span>')
+        .replace(/\b(getClip|paintWave|quadraticBezierTo|lineTo|moveTo|close|drawPath|addPath|withOpacity)\b/g, '<span class="syn-fn">$1</span>')
+        .replace(/\b(size\.width|size\.height|Offset\.zero)\b/g, '<span class="syn-prop">$1</span>')
         .replace(/\b(\d+\.?\d*)\b/g, '<span class="syn-num">$1</span>');
 }
 
+function parseVal(expr) {
+    expr = expr.replace(/\s+/g, '');
+    if (expr === 'size.width' || expr === 'size.height') return 1.0;
+    if (expr === '0' || expr === '0.0') return 0.0;
+    if (expr === '-size.width' || expr === '-size.height') return -1.0;
+    
+    const match = expr.match(/-?\d*\.?\d+/);
+    if (match) {
+        return parseFloat(match[0]);
+    }
+    return 0.0;
+}
+
+function parseDartCode(code) {
+    if (layers.length > 1) return;
+    
+    const isFilledCode = code.includes('getClip');
+    if (isFilledCode !== isFilled) {
+        isFilled = isFilledCode;
+        fillToggle.checked = isFilled;
+        modeLabel.textContent = isFilled ? 'Fill' : 'Line';
+        strokeGroup.style.display = isFilled ? 'none' : 'flex';
+        fillEdgeGroup.style.display = isFilled ? 'flex' : 'none';
+        cornerLegend.style.display = isFilled ? 'flex' : 'none';
+    }
+
+    const regex = /path\.(moveTo|lineTo|quadraticBezierTo)\s*\(([^)]+)\)/g;
+    let match;
+    
+    let parsedPoints = [];
+    let parsedCorners = [];
+    
+    const finishShapeIndex = code.indexOf('// Finish shape');
+    
+    while ((match = regex.exec(code)) !== null) {
+        const type = match[1];
+        const argsStr = match[2];
+        const args = argsStr.split(',').map(s => parseVal(s));
+        
+        const isCorner = finishShapeIndex !== -1 && match.index > finishShapeIndex;
+        
+        if (!isCorner) {
+            if (type === 'moveTo' && args.length >= 2) {
+                parsedPoints.push({ type: 'start', x: args[0], y: args[1] });
+            } else if (type === 'quadraticBezierTo' && args.length >= 4) {
+                if (parsedPoints.length === 0) {
+                    parsedPoints.push({ type: 'start', x: 0, y: 0.5 });
+                }
+                parsedPoints.push({ type: 'control', x: args[0], y: args[1] });
+                parsedPoints.push({ type: 'anchor',  x: args[2], y: args[3] });
+            }
+        } else {
+            if (type === 'lineTo' && args.length >= 2) {
+                parsedCorners.push({ type: 'corner', x: args[0], y: args[1] });
+            } else if (type === 'quadraticBezierTo' && args.length >= 4) {
+                parsedCorners.push({ type: 'control', x: args[0], y: args[1] });
+                
+                const p0 = parsedPoints[0];
+                if (p0) {
+                    const isClosing = Math.abs(args[2] - p0.x) < 0.01 && Math.abs(args[3] - p0.y) < 0.01;
+                    if (!isClosing) {
+                        parsedCorners.push({ type: 'corner', x: args[2], y: args[3] });
+                    }
+                } else {
+                    parsedCorners.push({ type: 'corner', x: args[2], y: args[3] });
+                }
+            }
+        }
+    }
+    
+    if (parsedPoints.length >= 3) {
+        points = parsedPoints;
+    }
+    if (isFilledCode) {
+        corners = parsedCorners;
+    } else {
+        corners = [];
+    }
+    
+    render();
+}
+
+codeOutput.addEventListener('input', () => {
+    isTypingCode = true;
+    try {
+        parseDartCode(codeOutput.textContent);
+    } catch (e) {
+        console.error('Failed to parse code:', e);
+    }
+});
+
+codeOutput.addEventListener('blur', () => {
+    isTypingCode = false;
+    render();
+});
+
 // ── Toolbar Handlers ────────────────────────────────────────
 
-// Fill / Line toggle
 fillToggle.addEventListener('change', e => {
     isFilled = e.target.checked;
     modeLabel.textContent = isFilled ? 'Fill' : 'Line';
@@ -674,112 +894,136 @@ fillToggle.addEventListener('change', e => {
     fillEdgeGroup.style.display = isFilled ? 'flex' : 'none';
     cornerLegend.style.display = isFilled ? 'flex' : 'none';
     
-    // Clear selection if a corner was selected and we switch to line mode
     if (!isFilled && selected !== null && selected >= points.length) {
         selectPoint(null);
     }
-    
     render();
 });
 
-// Fill edge select (auto-positions corners and rotates shape)
 fillEdgeSelect.addEventListener('change', e => {
     const val = e.target.value;
     
-    // Transform all points from currentEdge to the new edge
-    points.forEach(p => {
-        // 1. Convert to Bottom Standard
-        let xb = p.x, yb = p.y;
-        if (currentEdge === 'top') { yb = 1 - p.y; }
-        else if (currentEdge === 'left') { xb = p.y; yb = 1 - p.x; }
-        else if (currentEdge === 'right') { xb = p.y; yb = p.x; }
-        
-        // 2. Convert from Bottom Standard to newEdge
-        if (val === 'bottom') { p.x = xb; p.y = yb; }
-        else if (val === 'top') { p.x = xb; p.y = 1 - yb; }
-        else if (val === 'left') { p.x = 1 - yb; p.y = xb; }
-        else if (val === 'right') { p.x = yb; p.y = xb; }
-    });
+    const wFactor = lastWidth / 100;
+    const hFactor = lastHeight / 100;
+    
+    const transform = (arr) => {
+        arr.forEach(p => {
+            if (wFactor > 0) p.x /= wFactor;
+            if (hFactor > 0) p.y /= hFactor;
+            
+            let xb = p.x, yb = p.y;
+            if (currentEdge === 'top') { yb = 1 - p.y; }
+            else if (currentEdge === 'left') { xb = p.y; yb = 1 - p.x; }
+            else if (currentEdge === 'right') { xb = p.y; yb = p.x; }
+            
+            if (val === 'bottom') { p.x = xb; p.y = yb; }
+            else if (val === 'top') { p.x = xb; p.y = 1 - yb; }
+            else if (val === 'left') { p.x = 1 - yb; p.y = xb; }
+            else if (val === 'right') { p.x = yb; p.y = xb; }
+        });
+    };
+    
+    transform(points);
+    transform(corners);
+    
+    let newWidth = lastWidth;
+    let newHeight = lastHeight;
+    
+    const isOldVertical = (currentEdge === 'left' || currentEdge === 'right');
+    const isNewVertical = (val === 'left' || val === 'right');
+    
+    if (isOldVertical !== isNewVertical) {
+        newWidth = lastHeight;
+        newHeight = lastWidth;
+        widthSlider.value = newWidth;
+        heightSlider.value = newHeight;
+    }
+    
+    const newWFactor = newWidth / 100;
+    const newHFactor = newHeight / 100;
+    
+    const applyScale = (arr) => {
+        arr.forEach(p => {
+            p.x *= newWFactor;
+            p.y *= newHFactor;
+        });
+    };
+    
+    applyScale(points);
+    applyScale(corners);
     
     currentEdge = val;
-
-    if (val === 'bottom') {
-        corners[0] = { type: 'corner', x: 1.0, y: 1.0 };
-        corners[1] = { type: 'corner', x: 0.0, y: 1.0 };
-    } else if (val === 'top') {
-        corners[0] = { type: 'corner', x: 1.0, y: 0.0 };
-        corners[1] = { type: 'corner', x: 0.0, y: 0.0 };
-    } else if (val === 'left') {
-        corners[0] = { type: 'corner', x: 0.0, y: 1.0 };
-        corners[1] = { type: 'corner', x: 0.0, y: 0.0 };
-    } else if (val === 'right') {
-        corners[0] = { type: 'corner', x: 1.0, y: 1.0 };
-        corners[1] = { type: 'corner', x: 1.0, y: 0.0 };
-    }
+    lastWidth = newWidth;
+    lastHeight = newHeight;
+    
     render();
 });
 
-// Stroke width (line mode only)
 strokeInput.addEventListener('input', () => {
     const v = parseInt(strokeInput.value, 10);
     strokeWidth = isNaN(v) || v < 1 ? 3 : v;
     render();
 });
 
-// Flip Wave (180 degrees)
 flipBtn.addEventListener('click', () => {
+    const wFactor = lastWidth / 100;
+    const hFactor = lastHeight / 100;
+    
+    const transform = (arr) => {
+        arr.forEach(p => {
+            if (wFactor > 0) p.x /= wFactor;
+            if (hFactor > 0) p.y /= hFactor;
+            
+            if (currentEdge === 'bottom' || currentEdge === 'top') {
+                p.x = 1 - p.x;
+            } else {
+                p.y = 1 - p.y;
+            }
+            
+            p.x *= wFactor;
+            p.y *= hFactor;
+        });
+    };
+    
     points.reverse();
     points.forEach((p, i) => {
         if (i === 0) p.type = 'start';
         else if (i % 2 === 1) p.type = 'control';
         else p.type = 'anchor';
-        
-        if (currentEdge === 'bottom' || currentEdge === 'top') {
-            p.x = 1 - p.x;
-        } else {
-            p.y = 1 - p.y;
-        }
     });
     
-    // Deselect if pointing to a wave point
-    if (selected !== null && selected < points.length) {
+    transform(points);
+    corners.reverse();
+    transform(corners);
+    
+    if (selected !== null) {
         selectPoint(null);
     }
-    
     render();
 });
 
-// Add Wave — keeps existing shape, adds new segment at the end
 addBtn.addEventListener('click', () => {
     const segs = (points.length - 1) / 2;
     const newSegs = segs + 1;
     const scale = segs / newSegs;
-
-    // Compress existing X to make room
     points.forEach(p => { p.x *= scale; });
-
     const last = points[points.length - 1];
     points.push({ type: 'control', x: last.x + 0.5 / newSegs, y: last.y });
     points.push({ type: 'anchor',  x: 1.0, y: last.y });
-
     render();
 });
 
-// Remove Wave — removes last segment, expands remaining
 removeBtn.addEventListener('click', () => {
     if (points.length <= 3) return;
     points.splice(-2, 2);
-
     const segs = (points.length - 1) / 2;
     const scale = (segs + 1) / segs;
     points.forEach(p => { p.x *= scale; });
     points[points.length - 1].x = 1.0;
-
     if (selected !== null && selected >= points.length) selectPoint(null);
     render();
 });
 
-// Smooth — set internal anchors to midpoints of their neighbors
 smoothBtn.addEventListener('click', () => {
     for (let i = 2; i < points.length - 1; i += 2) {
         const prev = points[i - 1], next = points[i + 1];
@@ -789,7 +1033,6 @@ smoothBtn.addEventListener('click', () => {
     render();
 });
 
-// Copy
 copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(codeOutput.innerText).then(() => {
         copyBtn.textContent = '✓ Copied!';
@@ -797,5 +1040,22 @@ copyBtn.addEventListener('click', () => {
     });
 });
 
-// ── Boot ────────────────────────────────────────────────────
+widthSlider.addEventListener('input', e => {
+    const val = parseInt(e.target.value, 10);
+    const factor = val / lastWidth;
+    points.forEach(p => { p.x *= factor; });
+    corners.forEach(c => { if (c.x > 0.001) c.x *= factor; });
+    lastWidth = val;
+    render();
+});
+
+heightSlider.addEventListener('input', e => {
+    const val = parseInt(e.target.value, 10);
+    const factor = val / lastHeight;
+    points.forEach(p => { p.y *= factor; });
+    corners.forEach(c => { if (c.y > 0.001) c.y *= factor; });
+    lastHeight = val;
+    render();
+});
+
 setTimeout(render, 60);

@@ -36,6 +36,15 @@
                             <span id="mode-label">Fill</span>
                         </div>
                     </div>
+                    <div class="toolbar-group">
+                        <label class="toolbar-label">Layer:
+                            <select id="layer-select" class="toolbar-input" style="height:28px;">
+                                <option value="0">Wave 1</option>
+                            </select>
+                        </label>
+                        <button id="add-layer-btn" class="btn btn-tool" title="Add Layer">+</button>
+                        <button id="remove-layer-btn" class="btn btn-tool" title="Remove Layer">−</button>
+                    </div>
 
                     <div class="toolbar-group" id="stroke-group" style="display:none;">
                         <label class="toolbar-label">Stroke
@@ -52,6 +61,15 @@
                                 <option value="left">Left</option>
                                 <option value="right">Right</option>
                             </select>
+                        </label>
+                    </div>
+
+                    <div class="toolbar-group">
+                        <label class="toolbar-label">Width
+                            <input type="range" id="width-slider" min="10" max="100" value="100" class="toolbar-slider" style="width: 60px;">
+                        </label>
+                        <label class="toolbar-label">Height
+                            <input type="range" id="height-slider" min="10" max="100" value="100" class="toolbar-slider" style="width: 60px;">
                         </label>
                     </div>
 
@@ -85,14 +103,24 @@
                     <div class="canvas-container">
                         <svg id="wave-canvas" preserveAspectRatio="none">
                             <defs>
-                                <linearGradient id="wave-gradient" x1="0" y1="0" x2="1" y2="1">
+                                <linearGradient id="wave-gradient-0" x1="0" y1="0" x2="1" y2="1">
                                     <stop offset="0%" stop-color="#6366f1" stop-opacity="0.9" />
                                     <stop offset="100%" stop-color="#a855f7" stop-opacity="0.85" />
                                 </linearGradient>
+                                <linearGradient id="wave-gradient-1" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#ec4899" stop-opacity="0.85" />
+                                    <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.8" />
+                                </linearGradient>
+                                <linearGradient id="wave-gradient-2" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.85" />
+                                    <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0.8" />
+                                </linearGradient>
+                                <linearGradient id="wave-gradient-3" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.85" />
+                                    <stop offset="100%" stop-color="#ef4444" stop-opacity="0.8" />
+                                </linearGradient>
                             </defs>
-                            <path id="wave-path" />
-                            <path id="wave-stroke" fill="none" stroke="rgba(255,255,255,0.01)" stroke-width="20"
-                                pointer-events="stroke" style="cursor: crosshair;" />
+                            <g id="layers-container"></g>
                             <path id="helper-lines" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"
                                 stroke-dasharray="5" fill="none" />
                             <g id="points-container"></g>
@@ -117,7 +145,7 @@
                     <span>Generated Dart Code</span>
                     <button id="copy-btn" class="btn btn-primary">Copy Code</button>
                 </div>
-                <pre><code id="code-output"></code></pre>
+                <pre><code id="code-output" contenteditable="true" spellcheck="false" style="outline: none;"></code></pre>
             </div>
         </main>
     </div>
